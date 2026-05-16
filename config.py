@@ -17,12 +17,11 @@ UNIVERSES = {
     ]
 }
 
+# Real macro column names (as they appear in master_data.parquet)
 MACRO_COLUMNS = ["VIX", "DXY", "T10Y2Y", "TBILL_3M", "IG_SPREAD", "HY_SPREAD"]
 
-# Rolling windows to evaluate (days)
-WINDOWS = [63, 252, 504, 1008]   # 1008 days ≈ 4 years
-
-# For each window, we will train a causal bandit and keep best score per ETF.
+# Rolling windows (days)
+WINDOWS = [63, 252, 504, 1008]
 
 # Thompson sampling parameters
 N_THOMPSON_SAMPLES = 100
