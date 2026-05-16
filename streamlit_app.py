@@ -79,14 +79,18 @@ for universe_name, uni_data in universes.items():
     cols = st.columns(3)
     for idx, etf in enumerate(top_etfs):
         with cols[idx]:
+            # Safely access keys with fallback
+            ticker = etf.get('ticker', '?')
+            score = etf.get('thompson_score', etf.get('score', 0.0))
+            best_window = etf.get('best_window', 'N/A')
             st.markdown(f"""
             <div class="etf-card">
-                <div class="etf-ticker">{etf['ticker']}</div>
-                <div class="etf-score">score = {etf['thompson_score']:.4f}</div>
-                <div class="etf-score">best window = {etf['best_window']}d</div>
+                <div class="etf-ticker">{ticker}</div>
+                <div class="etf-score">score = {score:.4f}</div>
+                <div class="etf-score">best window = {best_window}d</div>
             </div>
             """, unsafe_allow_html=True)
-    # Show summary of window results
+    # Show summary of window results (if available)
     win_res = uni_data.get("window_results", {})
     if win_res:
         with st.expander("📊 Window summary (number of ETFs with valid scores)"):
@@ -95,10 +99,17 @@ for universe_name, uni_data in universes.items():
     with st.expander("📋 Full ranking (all ETFs, best window per ETF)"):
         full = uni_data.get("full_scores", {})
         if full:
-            df = pd.DataFrame([
-                {"ETF": ticker, "Best Score": info["score"], "Best Window": info["best_window"]}
-                for ticker, info in full.items()
-            ]).sort_values("Best Score", ascending=False)
+            # full_scores can be either dict of float or dict of dict with 'score' and 'best_window'
+            rows = []
+            for ticker, info in full.items():
+                if isinstance(info, dict):
+                    score = info.get('score', info.get('thompson_score', 0.0))
+                    best_win = info.get('best_window', 'N/A')
+                else:
+                    score = info
+                    best_win = 'N/A'
+                rows.append({"ETF": ticker, "Best Score": score, "Best Window": best_win})
+            df = pd.DataFrame(rows).sort_values("Best Score", ascending=False)
             st.dataframe(df, use_container_width=True, hide_index=True)
     st.divider()
 
