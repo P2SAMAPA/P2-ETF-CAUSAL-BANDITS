@@ -17,17 +17,15 @@ UNIVERSES = {
     ]
 }
 
-# Macro columns
 MACRO_COLUMNS = ["VIX", "DXY", "T10Y2Y", "TBILL_3M", "IG_SPREAD", "HY_SPREAD"]
 
-# Rolling window for causal discovery (days)
-WINDOW = 252
+# Rolling windows to evaluate (days)
+WINDOWS = [63, 252, 504, 1008]   # 1008 days ≈ 4 years
 
-# For LiNGAM: we need at least 3 times more samples than variables
-# But we have many ETFs + macro -> we'll use a subset? Or use PCMCI? But we'll keep LiNGAM.
+# For each window, we will train a causal bandit and keep best score per ETF.
 
 # Thompson sampling parameters
-N_THOMPSON_SAMPLES = 100   # number of samples per ETF per day
-EXPLORATION_BONUS = 0.5    # coefficient for causal uncertainty
+N_THOMPSON_SAMPLES = 100
+EXPLORATION_BONUS = 0.5
 
 TOP_N = 3
