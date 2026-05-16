@@ -19,48 +19,47 @@ def main():
     for universe_name, tickers in config.UNIVERSES.items():
         print(f"\n=== Universe: {universe_name} (Causal Bandits) ===")
         combined = data_manager.prepare_combined_data(df, tickers)
-        if combined.empty:
-            print("  No data")
+        if combined.empty or len(combined) < max(config.WINDOWS) + 10:
+            print("  Insufficient data")
             all_results[universe_name] = {"top_etfs": []}
             continue
 
-        # Ensure macro columns exist
-        available_macro = [c for c in config.MACRO_COLUMNS if c in combined.columns]
-        if not available_macro:
-            print("  No macro columns found – skipping universe")
-            all_results[universe_name] = {"top_etfs": []}
-            continue
-
-        # Store best per ETF across windows: ticker -> (best_score, best_window)
-        best_per_etf = {}
+        # For each ETF, store best (score, window)
+        best_per_etf = {}   # ticker -> (best_score, best_window)
+        window_results = {} # win -> list of (ticker, score)
 
         for win in config.WINDOWS:
             if len(combined) < win + 10:
                 print(f"  Skipping window {win}d (insufficient data)")
                 continue
+            print(f"  Processing window {win}d...")
             train_data = combined.iloc[-win:]
+
+            # Ensure macro columns exist
+            available_macro = [c for c in config.MACRO_COLUMNS if c in train_data.columns]
+            if not available_macro:
+                print(f"    No macro columns available, skipping window {win}d")
+                continue
+
             bandit = CausalBandit(train_data, available_macro,
                                   n_thompson=config.N_THOMPSON_SAMPLES,
                                   exploration_bonus=config.EXPLORATION_BONUS)
-            try:
-                bandit.fit_causal_graph()
-            except Exception as e:
-                print(f"  Failed to fit causal graph for window {win}d: {e}")
-                continue
-            # Compute Thompson scores for all ETFs in this universe (that are in train_data)
-            scores = bandit.rank_etfs()   # list of (etf, score)
+            bandit.fit_causal_graph()
+            rankings = bandit.rank_etfs()
+            # Store rankings for this window
+            window_scores = {etf: score for etf, score in rankings}
+            window_results[win] = window_scores
             # Update best per ETF
-            for etf, score in scores:
+            for etf, score in window_scores.items():
                 if etf not in best_per_etf or score > best_per_etf[etf][0]:
                     best_per_etf[etf] = (score, win)
-            print(f"  Window {win}d: top ETF {scores[0][0]} with score {scores[0][1]:.4f}")
 
         if not best_per_etf:
-            print("  No valid predictions across windows")
+            print("  No valid predictions")
             all_results[universe_name] = {"top_etfs": []}
             continue
 
-        # Rank by best score descending
+        # Rank ETFs by their best score (descending)
         sorted_etfs = sorted(best_per_etf.items(), key=lambda x: x[1][0], reverse=True)
         top_etfs = []
         full_scores = {}
@@ -71,6 +70,7 @@ def main():
         all_results[universe_name] = {
             "top_etfs": top_etfs,
             "full_scores": full_scores,
+            "window_results": window_results,
             "run_date": today
         }
 
