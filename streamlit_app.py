@@ -18,13 +18,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-header">🎯 Causal Bandits Engine</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Multi‑armed bandit with causal structure | Thompson sampling | Exploration bonus via causal uncertainty</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Multi‑armed bandit with causal structure | Thompson sampling | Exploration bonus | Best window per ETF (63/252/504/1008d)</div>', unsafe_allow_html=True)
 
 st.sidebar.markdown("## 🎯 Causal Bandits")
 st.sidebar.markdown(f"**Run Date:** `{st.session_state.get('run_date', 'Not loaded')}`")
 st.sidebar.markdown(f"**Next Trading Day:** `{next_trading_day()}`")
 st.sidebar.markdown(f"**Thompson samples:** {config.N_THOMPSON_SAMPLES}")
 st.sidebar.markdown(f"**Exploration bonus:** {config.EXPLORATION_BONUS}")
+st.sidebar.markdown("**Windows evaluated:** 63, 252, 504, 1008 days (best per ETF)")
 
 OUTPUT_REPO = config.OUTPUT_REPO
 HF_TOKEN = config.HF_TOKEN
@@ -68,7 +69,7 @@ if "error" in data:
 st.session_state['run_date'] = data['run_date']
 universes = data["universes"]
 
-st.header("🏆 Top ETFs by Thompson Score (Expected Reward + Exploration Bonus)")
+st.header("🏆 Top ETFs by Best Thompson Score Across Windows")
 
 for universe_name, uni_data in universes.items():
     top_etfs = uni_data.get("top_etfs", [])
@@ -81,15 +82,24 @@ for universe_name, uni_data in universes.items():
             st.markdown(f"""
             <div class="etf-card">
                 <div class="etf-ticker">{etf['ticker']}</div>
-                <div class="etf-score">Thompson score = {etf['thompson_score']:.4f}</div>
+                <div class="etf-score">score = {etf['thompson_score']:.4f}</div>
+                <div class="etf-score">best window = {etf['best_window']}d</div>
             </div>
             """, unsafe_allow_html=True)
-    with st.expander("📋 Full ranking (all ETFs)"):
+    # Show summary of window results
+    win_res = uni_data.get("window_results", {})
+    if win_res:
+        with st.expander("📊 Window summary (number of ETFs with valid scores)"):
+            win_summary = {win: len(scores) for win, scores in win_res.items()}
+            st.write(win_summary)
+    with st.expander("📋 Full ranking (all ETFs, best window per ETF)"):
         full = uni_data.get("full_scores", {})
         if full:
-            df = pd.DataFrame(list(full.items()), columns=["ETF", "Thompson Score"])
-            df = df.sort_values("Thompson Score", ascending=False)
+            df = pd.DataFrame([
+                {"ETF": ticker, "Best Score": info["score"], "Best Window": info["best_window"]}
+                for ticker, info in full.items()
+            ]).sort_values("Best Score", ascending=False)
             st.dataframe(df, use_container_width=True, hide_index=True)
     st.divider()
 
-st.caption("For each ETF, we fit a causal graph (LiNGAM) from macro factors to ETF returns. Thompson sampling draws from the interventional distribution (do‑calculus) and adds an exploration bonus proportional to the standard deviation of the sampled rewards. This balances exploitation (high expected return) with exploration (high causal uncertainty).")
+st.caption("For each rolling window (63, 252, 504, 1008 days), we learn a causal graph (LiNGAM) and compute Thompson scores. For each ETF we keep the highest score across windows. Higher score = stronger causal bandit signal.")
