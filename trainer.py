@@ -19,37 +19,55 @@ def main():
     for universe_name, tickers in config.UNIVERSES.items():
         print(f"\n=== Universe: {universe_name} (Causal Bandits) ===")
         combined = data_manager.prepare_combined_data(df, tickers)
-        if combined.empty or len(combined) < config.WINDOW + 10:
-            print("  Insufficient data")
+        if combined.empty:
+            print("  No data")
             all_results[universe_name] = {"top_etfs": []}
             continue
 
-        # Use last WINDOW days
-        train_data = combined.iloc[-config.WINDOW:]
+        # Ensure macro columns exist
+        available_macro = [c for c in config.MACRO_COLUMNS if c in combined.columns]
+        if not available_macro:
+            print("  No macro columns found – skipping universe")
+            all_results[universe_name] = {"top_etfs": []}
+            continue
 
-        # Ensure all macro columns are present; if not, skip or impute
-        missing_macro = [c for c in config.MACRO_COLUMNS if c not in train_data.columns]
-        if missing_macro:
-            print(f"  Missing macro columns: {missing_macro} – using only available")
-            # Continue with available macro columns
-            available_macro = [c for c in config.MACRO_COLUMNS if c in train_data.columns]
-            config.MACRO_COLUMNS = available_macro  # update locally
+        # Store best per ETF across windows: ticker -> (best_score, best_window)
+        best_per_etf = {}
 
-        # Fit causal bandit
-        bandit = CausalBandit(train_data, config.MACRO_COLUMNS,
-                              n_thompson=config.N_THOMPSON_SAMPLES,
-                              exploration_bonus=config.EXPLORATION_BONUS)
-        bandit.fit_causal_graph()
-        rankings = bandit.rank_etfs()
+        for win in config.WINDOWS:
+            if len(combined) < win + 10:
+                print(f"  Skipping window {win}d (insufficient data)")
+                continue
+            train_data = combined.iloc[-win:]
+            bandit = CausalBandit(train_data, available_macro,
+                                  n_thompson=config.N_THOMPSON_SAMPLES,
+                                  exploration_bonus=config.EXPLORATION_BONUS)
+            try:
+                bandit.fit_causal_graph()
+            except Exception as e:
+                print(f"  Failed to fit causal graph for window {win}d: {e}")
+                continue
+            # Compute Thompson scores for all ETFs in this universe (that are in train_data)
+            scores = bandit.rank_etfs()   # list of (etf, score)
+            # Update best per ETF
+            for etf, score in scores:
+                if etf not in best_per_etf or score > best_per_etf[etf][0]:
+                    best_per_etf[etf] = (score, win)
+            print(f"  Window {win}d: top ETF {scores[0][0]} with score {scores[0][1]:.4f}")
 
+        if not best_per_etf:
+            print("  No valid predictions across windows")
+            all_results[universe_name] = {"top_etfs": []}
+            continue
+
+        # Rank by best score descending
+        sorted_etfs = sorted(best_per_etf.items(), key=lambda x: x[1][0], reverse=True)
         top_etfs = []
         full_scores = {}
-        for etf, score in rankings[:config.TOP_N]:
-            top_etfs.append({"ticker": etf, "thompson_score": float(score)})
-        for etf, score in rankings:
-            full_scores[etf] = float(score)
-
-        print(f"  Top 3 ETFs by Thompson score: {[e['ticker'] for e in top_etfs]}")
+        for ticker, (score, win) in sorted_etfs[:config.TOP_N]:
+            top_etfs.append({"ticker": ticker, "thompson_score": float(score), "best_window": win})
+            full_scores[ticker] = {"score": float(score), "best_window": win}
+        print(f"  Top 3 ETFs by best Thompson score across windows: {[e['ticker'] for e in top_etfs]}")
         all_results[universe_name] = {
             "top_etfs": top_etfs,
             "full_scores": full_scores,
@@ -63,7 +81,7 @@ def main():
 
     import push_results
     push_results.push_daily_result(local_path)
-    print("\n=== Causal Bandits Engine complete ===")
+    print("\n=== Causal Bandits Engine (multi‑window) complete ===")
 
 if __name__ == "__main__":
     main()
