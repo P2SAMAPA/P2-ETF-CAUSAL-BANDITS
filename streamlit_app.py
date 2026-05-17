@@ -25,7 +25,7 @@ st.sidebar.markdown(f"**Run Date:** `{st.session_state.get('run_date', 'Not load
 st.sidebar.markdown(f"**Next Trading Day:** `{next_trading_day()}`")
 st.sidebar.markdown(f"**Thompson samples:** {config.N_THOMPSON_SAMPLES}")
 st.sidebar.markdown(f"**Exploration bonus:** {config.EXPLORATION_BONUS}")
-st.sidebar.markdown("**Windows evaluated:** 63, 252, 504, 1008, 2016 days (best per ETF)")
+st.sidebar.markdown("**Windows evaluated:** 63, 252, 504 days (best per ETF)")
 
 OUTPUT_REPO = config.OUTPUT_REPO
 HF_TOKEN = config.HF_TOKEN
