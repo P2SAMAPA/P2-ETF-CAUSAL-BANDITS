@@ -21,7 +21,7 @@ UNIVERSES = {
 MACRO_COLUMNS = ["VIX", "DXY", "T10Y2Y", "TBILL_3M", "IG_SPREAD", "HY_SPREAD"]
 
 # Rolling windows (days)
-WINDOWS = [63, 252, 504, 1008]
+WINDOWS = [63, 252, 504, 1008, 2016]
 
 # Thompson sampling parameters
 N_THOMPSON_SAMPLES = 100
