@@ -18,9 +18,24 @@ def main():
 
     for universe_name, tickers in config.UNIVERSES.items():
         print(f"\n=== Universe: {universe_name} (Causal Bandits) ===")
+        # Prepare combined data (ETF returns + macro)
         combined = data_manager.prepare_combined_data(df, tickers)
-        if combined.empty or len(combined) < max(config.WINDOWS) + 10:
-            print("  Insufficient data")
+        if combined.empty:
+            print("  Combined data is empty – trying with returns only")
+            # Fallback: use only returns, no macro
+            returns = data_manager.prepare_returns_matrix(df, tickers)
+            if returns.empty:
+                print("  No returns data either")
+                all_results[universe_name] = {"top_etfs": []}
+                continue
+            combined = returns
+            # Add dummy macro columns to avoid errors in CausalBandit
+            for col in config.MACRO_COLUMNS:
+                combined[col] = 0.0
+        print(f"  Combined data length: {len(combined)} days")
+
+        if len(combined) < max(config.WINDOWS) + 10:
+            print(f"  Insufficient data (need at least {max(config.WINDOWS)+10} days)")
             all_results[universe_name] = {"top_etfs": []}
             continue
 
@@ -34,11 +49,10 @@ def main():
             print(f"  Processing window {win}d...")
             train_data = combined.iloc[-win:]
 
-            # Available macro columns (only those present in the data)
             available_macro = [c for c in config.MACRO_COLUMNS if c in train_data.columns]
             if not available_macro:
                 print(f"    No macro columns available for window {win}d – using empirical Thompson sampling")
-                # Use empty macro list; CausalBandit will fallback to empirical sampling
+                # We can still proceed with empty macro list; CausalBandit will fallback
                 available_macro = []
 
             bandit = CausalBandit(train_data, available_macro,
@@ -53,13 +67,7 @@ def main():
                     best_per_etf[etf] = (score, win)
 
         if not best_per_etf:
-            print("  No valid predictions – falling back to historical mean return")
-            # Fallback: use mean return of last 252 days
-            for etf in tickers:
-                if etf in returns.columns:  # need returns, not combined; we have returns elsewhere
-                    pass
-            # Simpler: fallback to zero but we will use historical returns below
-            # We'll compute historical means from the returns DataFrame
+            print("  No valid predictions – falling back to historical mean return (last 252 days)")
             returns = data_manager.prepare_returns_matrix(df, tickers)
             for etf in tickers:
                 if etf in returns.columns:
@@ -70,7 +78,6 @@ def main():
                 all_results[universe_name] = {"top_etfs": []}
                 continue
 
-        # Store full scores for all ETFs
         full_scores = {ticker: {"score": score, "best_window": win} for ticker, (score, win) in best_per_etf.items()}
         sorted_etfs = sorted(best_per_etf.items(), key=lambda x: x[1][0], reverse=True)
         top_etfs = [{"ticker": ticker, "thompson_score": float(score), "best_window": win} for ticker, (score, win) in sorted_etfs[:config.TOP_N]]
@@ -90,7 +97,7 @@ def main():
 
     import push_results
     push_results.push_daily_result(local_path)
-    print("\n=== Causal Bandits Engine (multi‑window) complete ===")
+    print("\n=== Causal Bandits Engine complete ===")
 
 if __name__ == "__main__":
     main()
